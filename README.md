@@ -80,8 +80,7 @@ cp .env.example .env
 | Variable | Required | Default | What it does |
 |---|---|---|---|
 | `BOT_TOKEN` | ✅ | — | Telegram bot token from @BotFather |
-| `WEBHOOK_URL` | ✅ | — | Public HTTPS URL of this app's `/webhook` route |
-| `WEBHOOK_SECRET` | — | *(unset)* | Shared secret checked against Telegram's `X-Telegram-Bot-Api-Secret-Token` header |
+| `WEBHOOK_URL` | — | *(unset)* | Public HTTPS URL of `/webhook`; also locks `/set-webhook` to that domain |
 | `BOT_USERNAME` | — | `YourBotUsername` | Shown on the web page's "Open in Telegram" link |
 | `GOOGLE_API_KEY` | — | *(unset)* | YouTube Data API v3 key — required for plain-text search |
 | `PORT` / `HOST` | — | `3000` / `0.0.0.0` | Bind address for the standalone server |
@@ -91,6 +90,20 @@ cp .env.example .env
 | `MAX_URL_UPLOAD_BYTES` | — | `20971520` | Send-by-URL ceiling before falling back to local download + upload |
 
 ### 3. Register the webhook
+
+Open the connector route once — it points Telegram at this deployment's
+`/webhook`:
+
+```bash
+curl https://your-domain/set-webhook
+```
+
+```json
+{ "ok": true, "url": "https://your-domain/webhook", "telegram": { "ok": true, "result": true } }
+```
+
+No CLI, no secret, nothing to copy between machines. The CLI equivalent
+still works if you'd rather run it from `.env`:
 
 ```bash
 bun run set-webhook
@@ -137,6 +150,7 @@ A full player-facing guide lives in [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md).
 | Route | Method | Purpose |
 |---|---|---|
 | `/webhook` | `POST` | Telegram update entry point |
+| `/set-webhook` | `GET`/`POST` | Registers this deployment's `/webhook` with Telegram |
 | `/` | `GET` | Web downloader page |
 | `/ajax`, `/` | `POST` | Extract a URL → JSON (video, cover, audio, image set) |
 | `/dl` | `GET` | `302` redirect to the real CDN URL behind a YouTube menu button |
@@ -208,8 +222,8 @@ the public `/webhook` path. A process manager (systemd, pm2) keeps it up.
    from `bun.lock`; `bun run build` runs automatically).
 2. Add every variable from `.env.example` in **Project → Settings → Environment
    Variables**, plus `TEMP_DIR=/tmp` (the project directory is read-only).
-3. Deploy, then register the webhook:
-   `WEBHOOK_URL=https://<app>.vercel.app/webhook bun run set-webhook`.
+3. Deploy, then connect it: `curl https://<app>.vercel.app/set-webhook`
+   (or `WEBHOOK_URL=… bun run set-webhook`).
 
 Things worth knowing:
 

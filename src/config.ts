@@ -39,10 +39,6 @@ const data: Record<string, unknown> = {
   // Public HTTPS URL of this app's /webhook route.
   webhook_url: env('WEBHOOK_URL'),
 
-  // Shared secret checked against Telegram's
-  // X-Telegram-Bot-Api-Secret-Token header.
-  webhook_secret: env('WEBHOOK_SECRET'),
-
   // @username shown on the web page's "Open in Telegram" link.
   bot_username: env('BOT_USERNAME', 'YourBotUsername'),
 

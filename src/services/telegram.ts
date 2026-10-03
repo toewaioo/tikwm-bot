@@ -260,9 +260,7 @@ export class TelegramService {
     });
   }
 
-  async setWebhook(url: string, secretToken?: string | null): Promise<TelegramResult | null> {
-    const params: Params = { url };
-    if (secretToken) params.secret_token = secretToken;
-    return this.request('setWebhook', params);
+  async setWebhook(url: string): Promise<TelegramResult | null> {
+    return this.request('setWebhook', { url });
   }
 }

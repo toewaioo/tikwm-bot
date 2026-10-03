@@ -3,9 +3,12 @@
  * locally with the same .env) to register the webhook URL with
  * Telegram.
  *
+ * The same thing over HTTP: once the site is deployed, open
+ * https://<your-domain>/set-webhook — it registers that domain's own
+ * /webhook route.
+ *
  * Equivalent curl command, if you prefer:
  *   curl -F "url=https://yourdomain.com/webhook" \
- *        -F "secret_token=<WEBHOOK_SECRET>" \
  *        https://api.telegram.org/bot<TOKEN>/setWebhook
  */
 import { Config } from '../src/config.js';
@@ -17,9 +20,7 @@ if (!url) {
   process.exit(1);
 }
 
-const secret = Config.get<string>('webhook_secret', '') || null;
-const telegram = new TelegramService();
-const result = await telegram.setWebhook(url, secret);
+const result = await new TelegramService().setWebhook(url);
 
 console.log(JSON.stringify(result, null, 2));
 if (result?.ok !== true) process.exit(1);

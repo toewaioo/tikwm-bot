@@ -2,9 +2,10 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { Config } from './config.js';
-import { runWithHost } from './core/host.js';
+import { getRequestHost, runWithHost } from './core/host.js';
 import { handleWebhook } from './core/router.js';
 import { Validator } from './helpers/validator.js';
+import { TelegramService } from './services/telegram.js';
 import { TikwmService } from './services/tikwm.js';
 import { Tool77Service } from './services/tool77.js';
 
@@ -26,19 +27,83 @@ app.use('*', (c, next) => runWithHost(c.req.header('host') ?? null, next));
 
 /** Telegram webhook entry point — point setWebhook at this route's public HTTPS URL. */
 const handleWebhookRoute = async (c: Context) => {
-  const secret = Config.get<string>('webhook_secret', '');
-  if (secret !== '') {
-    const provided = c.req.header('x-telegram-bot-api-secret-token') ?? '';
-    if (provided !== secret) {
-      return c.text('Forbidden', 403);
-    }
-  }
-
   const status = await handleWebhook(await c.req.text());
   return c.body(null, status as ContentfulStatusCode);
 };
 
 app.post('/webhook', handleWebhookRoute);
+
+/**
+ * One-shot connector: registers *this deployment's* /webhook with
+ * Telegram, so a fresh deploy is connected by opening
+ * https://<your-domain>/set-webhook — no CLI run, no secret to carry
+ * around. Telegram's setWebhook answer is passed through verbatim.
+ *
+ * The target origin comes from the request's Host header (that's the
+ * point of the route), but when WEBHOOK_URL is configured its host must
+ * match — otherwise anyone who could reach this route would be able to
+ * re-point the bot's webhook at their own server with a forged Host.
+ */
+const handleSetWebhook = async (c: Context) => {
+  const host = getRequestHost() ?? '';
+  const configured = Config.get<string>('webhook_url', '');
+
+  if (host === '') {
+    return c.json({ ok: false, error: "Couldn't determine this site's host." }, 400);
+  }
+
+  if (configured !== '') {
+    let expected = '';
+    try {
+      expected = new URL(configured).host;
+    } catch {
+      expected = '';
+    }
+    if (expected !== '' && expected !== host) {
+      return c.json(
+        {
+          ok: false,
+          error: `WEBHOOK_URL points at ${expected}, but this request came from ${host}. Refusing to re-point the webhook.`,
+        },
+        400,
+      );
+    }
+  }
+
+  const origin = originOf(configured, c, host);
+  const target = `${origin}/webhook`;
+
+  const result = await new TelegramService().setWebhook(target);
+  const ok = result?.ok === true;
+
+  return c.json(
+    { ok, url: target, telegram: result ?? { ok: false, description: 'Telegram API unreachable' } },
+    (ok ? 200 : 502) as ContentfulStatusCode,
+  );
+};
+
+/** Scheme + host to build the webhook URL from — configured URL wins, then x-forwarded-proto, then the socket. */
+function originOf(configured: string, c: Context, host: string): string {
+  if (configured !== '') {
+    try {
+      return new URL(configured).origin;
+    } catch {
+      // Malformed WEBHOOK_URL — fall through to the request's own origin.
+    }
+  }
+
+  const forwarded = (c.req.header('x-forwarded-proto') ?? '').split(',')[0].trim();
+  if (forwarded === 'https' || forwarded === 'http') {
+    return `${forwarded}://${host}`;
+  }
+  try {
+    return new URL(c.req.url).origin;
+  } catch {
+    return `https://${host}`;
+  }
+}
+
+app.on(['GET', 'POST'], '/set-webhook', handleSetWebhook);
 
 /**
  * Short-link redirector for the bot's YouTube menu buttons. Inline
